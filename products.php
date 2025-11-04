@@ -39,7 +39,7 @@ if ($category_filter) {
     $sql = "SELECT p.*, c.name as category_name 
             FROM products p 
             LEFT JOIN categories c ON p.category_id = c.category_id 
-            WHERE p.is_active = 1 AND p.category_id = ? 
+            WHERE p.is_active = TRUE AND p.category_id = ? 
             ORDER BY p.date_added DESC";
     $stmt = $conn->prepare($sql);
     $stmt->bind_param("i", $category_filter);
@@ -49,16 +49,18 @@ if ($category_filter) {
     $sql = "SELECT p.*, c.name as category_name 
             FROM products p 
             LEFT JOIN categories c ON p.category_id = c.category_id 
-            WHERE p.is_active = 1 
+            WHERE p.is_active = TRUE 
             ORDER BY p.date_added DESC";
     $result = $conn->query($sql);
 }
 
 // Get categories for filter
-$categories_result = $conn->query("SELECT * FROM categories WHERE parent_category_id IS NULL");
+$categories_result = $conn->query("SELECT * FROM categories");
 $categories = [];
+if ($categories_result !== false) {
 while($row = $categories_result->fetch_assoc()) {
     $categories[] = $row;
+}
 }
 
 // Get current category name if filtered

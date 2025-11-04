@@ -10,7 +10,7 @@ $product_id = $_GET['id'] ?? 0;
 $product_sql = "SELECT p.*, c.name as category_name 
                 FROM products p 
                 LEFT JOIN categories c ON p.category_id = c.category_id 
-                WHERE p.product_id = ? AND p.is_active = 1";
+                WHERE p.product_id = ? AND p.is_active = TRUE";
 $product_stmt = $conn->prepare($product_sql);
 $product_stmt->bind_param("i", $product_id);
 $product_stmt->execute();

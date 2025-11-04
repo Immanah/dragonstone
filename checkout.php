@@ -1,10 +1,5 @@
 <?php 
-session_start();
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
-
-include 'includes/database.php';
-include 'includes/auth.php';
+require_once __DIR__ . '/includes/config.php';
 requireLogin();
 
 $conn = getDatabaseConnection();
@@ -107,30 +102,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['process_checkout'])) 
             "$address, $city, $postal_code";
 
         // Start transaction
-        $conn->begin_transaction();
+        $conn->query("BEGIN");
         
         try {
             error_log("Starting database transaction...");
             
-            // DROP AND RECREATE THE ORDERS TABLE WITH ALL COLUMNS
-            $conn->query("DROP TABLE IF EXISTS orders");
-            $conn->query("CREATE TABLE orders (
-                order_id INT AUTO_INCREMENT PRIMARY KEY,
-                user_id INT NOT NULL,
-                total_amount DECIMAL(10,2) NOT NULL,
-                shipping_cost DECIMAL(10,2) DEFAULT 0,
-                final_amount DECIMAL(10,2) NOT NULL,
-                shipping_address TEXT NOT NULL,
-                delivery_method VARCHAR(20) DEFAULT 'shipping',
-                status VARCHAR(50) DEFAULT 'Processing',
-                tracking_number VARCHAR(100),
-                customer_phone VARCHAR(20),
-                customer_name VARCHAR(255),
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )");
-            
-            error_log("Orders table created successfully");
-
             // Generate tracking number
             $tracking_number = 'DS' . date('YmdHis') . rand(100, 999);
             $customer_name = $first_name . ' ' . $last_name;
@@ -147,17 +123,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['process_checkout'])) 
             $order_id = $conn->insert_id;
             error_log("Order created: #$order_id");
 
-            // DROP AND RECREATE ORDER_ITEMS TABLE
-            $conn->query("DROP TABLE IF EXISTS order_items");
-            $conn->query("CREATE TABLE order_items (
-                order_item_id INT AUTO_INCREMENT PRIMARY KEY,
-                order_id INT NOT NULL,
-                product_id INT NOT NULL,
-                quantity INT NOT NULL,
-                unit_price DECIMAL(10,2) NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )");
-
             // Add order items
             foreach ($cart_items as $item) {
                 $product = $item['product'];
@@ -173,18 +138,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['process_checkout'])) 
 
             error_log("Order items added successfully");
 
-            // CREATE ECO_POINTS TABLE
-            $conn->query("DROP TABLE IF EXISTS eco_point_transactions");
-            $conn->query("CREATE TABLE eco_point_transactions (
-                transaction_id INT AUTO_INCREMENT PRIMARY KEY,
-                user_id INT NOT NULL,
-                points INT NOT NULL,
-                transaction_type VARCHAR(50) NOT NULL,
-                reason VARCHAR(255) NOT NULL,
-                reference_id VARCHAR(100),
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )");
-
             // Award EcoPoints
             $points_earned = calculateEcoPoints($cart_items);
             $points_sql = "INSERT INTO eco_point_transactions (user_id, points, transaction_type, reason, reference_id) VALUES (?, ?, 'Earned', ?, ?)";
@@ -194,18 +147,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['process_checkout'])) 
             $points_stmt->execute();
 
             error_log("EcoPoints awarded: $points_earned");
-
-            // CREATE PAYMENTS TABLE
-            $conn->query("DROP TABLE IF EXISTS payments");
-            $conn->query("CREATE TABLE payments (
-                payment_id INT AUTO_INCREMENT PRIMARY KEY,
-                order_id INT NOT NULL,
-                amount DECIMAL(10,2) NOT NULL,
-                payment_method VARCHAR(50) NOT NULL,
-                status VARCHAR(50) NOT NULL,
-                transaction_id VARCHAR(100) NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )");
 
             // Record payment 
             $payment_sql = "INSERT INTO payments (order_id, amount, payment_method, status, transaction_id) VALUES (?, ?, 'Credit Card', 'Completed', ?)";
@@ -220,7 +161,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['process_checkout'])) 
             $email_sent = sendSimpleConfirmationEmail($user_email, $order_id, $tracking_number, $cart_items, $final_total, $shipping_address);
 
             // Commit transaction
-            $conn->commit();
+            $conn->query("COMMIT");
             error_log("Transaction committed successfully");
 
             // Clear cart and show success
@@ -240,7 +181,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['process_checkout'])) 
             exit();
             
         } catch (Exception $e) {
-            $conn->rollback();
+            $conn->query("ROLLBACK");
             $error = "Order failed: " . $e->getMessage();
             error_log("CHECKOUT ERROR: " . $e->getMessage());
         }

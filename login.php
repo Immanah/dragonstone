@@ -52,7 +52,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
         if ($conn) {
             $sql = "SELECT user_id, email, password_hash, first_name, last_name, role, eco_points_balance 
                     FROM users 
-                    WHERE email = ? AND is_active = 1";
+                    WHERE email = ? AND is_active = TRUE";
             $stmt = $conn->prepare($sql);
             
             if ($stmt) {
@@ -109,7 +109,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['google_token'])) {
             // Check if user exists by email
             $sql = "SELECT user_id, email, first_name, last_name, role, eco_points_balance 
                     FROM users 
-                    WHERE email = ? AND is_active = 1";
+                    WHERE email = ? AND is_active = TRUE";
             $stmt = $conn->prepare($sql);
             $stmt->bind_param("s", $email);
             $stmt->execute();

@@ -1,0 +1,75 @@
+[04-Nov-2025 03:00:47 UTC] Query error: SQLSTATE[42883]: Undefined function: 7 ERROR:  operator does not exist: boolean = integer
+LINE 4:             WHERE p.is_active = 1 
+                                      ^
+HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
+[04-Nov-2025 03:00:47 UTC] Query error: SQLSTATE[42703]: Undefined column: 7 ERROR:  column "parent_category_id" does not exist
+LINE 1: SELECT * FROM categories WHERE parent_category_id IS NULL
+                                       ^
+[04-Nov-2025 03:00:47 UTC] PHP Fatal error:  Uncaught Error: Call to a member function fetch_assoc() on bool in /home/runner/workspace/products.php:60
+Stack trace:
+#0 {main}
+  thrown in /home/runner/workspace/products.php on line 60
+[04-Nov-2025 03:03:20 UTC] Query error: SQLSTATE[42883]: Undefined function: 7 ERROR:  operator does not exist: boolean = integer
+LINE 4:             WHERE p.is_active = 1 
+                                      ^
+HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
+[04-Nov-2025 03:03:20 UTC] PHP Warning:  Attempt to read property "num_rows" on bool in /home/runner/workspace/products.php on line 139
+[04-Nov-2025 03:03:20 UTC] PHP Warning:  Attempt to read property "num_rows" on bool in /home/runner/workspace/products.php on line 161
+[04-Nov-2025 03:03:20 UTC] PHP Warning:  Attempt to read property "num_rows" on bool in /home/runner/workspace/products.php on line 300
+[04-Nov-2025 03:03:35 UTC] Query error: SQLSTATE[42883]: Undefined function: 7 ERROR:  operator does not exist: boolean = integer
+LINE 4:             WHERE p.is_active = 1 
+                                      ^
+HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
+[04-Nov-2025 03:03:35 UTC] PHP Warning:  Attempt to read property "num_rows" on bool in /home/runner/workspace/products.php on line 139
+[04-Nov-2025 03:03:35 UTC] PHP Warning:  Attempt to read property "num_rows" on bool in /home/runner/workspace/products.php on line 161
+[04-Nov-2025 03:03:35 UTC] PHP Warning:  Attempt to read property "num_rows" on bool in /home/runner/workspace/products.php on line 300
+[04-Nov-2025 03:04:01 UTC] Execute error: SQLSTATE[42883]: Undefined function: 7 ERROR:  operator does not exist: boolean = integer
+LINE 4:             WHERE p.is_active = 1 AND p.category_id = $1 
+                                      ^
+HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
+[04-Nov-2025 03:04:21 UTC] Query error: SQLSTATE[42883]: Undefined function: 7 ERROR:  operator does not exist: boolean = integer
+LINE 4:             WHERE p.is_active = 1 
+                                      ^
+HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
+[04-Nov-2025 03:04:21 UTC] PHP Warning:  Attempt to read property "num_rows" on bool in /home/runner/workspace/products.php on line 139
+[04-Nov-2025 03:04:21 UTC] PHP Warning:  Attempt to read property "num_rows" on bool in /home/runner/workspace/products.php on line 161
+[04-Nov-2025 03:04:21 UTC] PHP Warning:  Attempt to read property "num_rows" on bool in /home/runner/workspace/products.php on line 300
+[04-Nov-2025 03:04:24 UTC] Query error: SQLSTATE[42883]: Undefined function: 7 ERROR:  operator does not exist: boolean = integer
+LINE 4: ...  (SELECT COUNT(*) FROM reviews WHERE is_approved = 1) as to...
+                                                             ^
+HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
+[04-Nov-2025 03:04:24 UTC] PHP Fatal error:  Uncaught Error: Call to a member function fetch_assoc() on bool in /home/runner/workspace/community.php:44
+Stack trace:
+#0 {main}
+  thrown in /home/runner/workspace/community.php on line 44
+[04-Nov-2025 03:04:27 UTC] Query error: SQLSTATE[42883]: Undefined function: 7 ERROR:  operator does not exist: boolean = integer
+LINE 4:             WHERE p.is_active = 1 
+                                      ^
+HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
+[04-Nov-2025 03:04:27 UTC] PHP Warning:  Attempt to read property "num_rows" on bool in /home/runner/workspace/products.php on line 139
+[04-Nov-2025 03:04:27 UTC] PHP Warning:  Attempt to read property "num_rows" on bool in /home/runner/workspace/products.php on line 161
+[04-Nov-2025 03:04:27 UTC] PHP Warning:  Attempt to read property "num_rows" on bool in /home/runner/workspace/products.php on line 300
+[04-Nov-2025 03:06:44 UTC] PHP Fatal error:  Uncaught Error: Call to undefined method class@anonymous::data_seek() in /home/runner/workspace/products.php:303
+Stack trace:
+#0 {main}
+  thrown in /home/runner/workspace/products.php on line 303
+[04-Nov-2025 03:12:50 UTC] PHP Fatal error:  Uncaught Error: Call to undefined method class@anonymous::data_seek() in /home/runner/workspace/products.php:303
+Stack trace:
+#0 {main}
+  thrown in /home/runner/workspace/products.php on line 303
+[04-Nov-2025 03:13:32 UTC] PHP Fatal error:  Uncaught Error: Call to undefined method class@anonymous::data_seek() in /home/runner/workspace/products.php:303
+Stack trace:
+#0 {main}
+  thrown in /home/runner/workspace/products.php on line 303
+[04-Nov-2025 03:13:34 UTC] PHP Fatal error:  Uncaught Error: Call to undefined method class@anonymous::data_seek() in /home/runner/workspace/products.php:303
+Stack trace:
+#0 {main}
+  thrown in /home/runner/workspace/products.php on line 303
+[04-Nov-2025 03:13:37 UTC] PHP Fatal error:  Uncaught Error: Call to undefined method class@anonymous::data_seek() in /home/runner/workspace/products.php:303
+Stack trace:
+#0 {main}
+  thrown in /home/runner/workspace/products.php on line 303
+[04-Nov-2025 03:13:41 UTC] PHP Fatal error:  Uncaught Error: Call to undefined method class@anonymous::data_seek() in /home/runner/workspace/products.php:303
+Stack trace:
+#0 {main}
+  thrown in /home/runner/workspace/products.php on line 303

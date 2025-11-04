@@ -75,7 +75,7 @@ if (isset($_POST['cancel_subscription']) && isLoggedIn()) {
 $products_sql = "SELECT p.*, c.name as category_name 
                  FROM products p 
                  LEFT JOIN categories c ON p.category_id = c.category_id 
-                 WHERE p.is_active = 1 AND p.stock_quantity > 0
+                 WHERE p.is_active = TRUE AND p.stock_quantity > 0
                  ORDER BY p.co2_saved DESC 
                  LIMIT 6";
 $products_result = $conn->query($products_sql);

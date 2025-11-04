@@ -38,10 +38,22 @@ $posts_result = $conn->query($posts_sql);
 $stats_sql = "SELECT 
               (SELECT COUNT(*) FROM forum_posts) as total_posts,
               (SELECT COUNT(*) FROM users) as total_members,
-              (SELECT COUNT(*) FROM reviews WHERE is_approved = 1) as total_reviews,
+              (SELECT COUNT(*) FROM reviews WHERE is_approved = TRUE) as total_reviews,
               (SELECT SUM(co2_saved) FROM products) as total_co2_saved";
 $stats_result = $conn->query($stats_sql);
-$stats = $stats_result->fetch_assoc();
+// Check if query was successful before calling fetch_assoc()
+if ($stats_result === false) {
+    error_log("Failed to fetch community stats");
+    // Provide default values if query fails
+    $stats = [
+        'total_posts' => 0,
+        'total_members' => 0,
+        'total_reviews' => 0,
+        'total_co2_saved' => 0
+    ];
+} else {
+    $stats = $stats_result->fetch_assoc();
+}
 
 require_once __DIR__ . '/includes/header.php';
 ?>

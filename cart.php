@@ -76,7 +76,7 @@ if (isset($_SESSION['cart']) && !empty($_SESSION['cart'])) {
     $product_ids = array_keys($_SESSION['cart']);
     $placeholders = str_repeat('?,', count($product_ids) - 1) . '?';
     
-    $stmt = $conn->prepare("SELECT * FROM products WHERE product_id IN ($placeholders) AND is_active = 1");
+    $stmt = $conn->prepare("SELECT * FROM products WHERE product_id IN ($placeholders) AND is_active = TRUE");
     
     // Bind parameters dynamically
     $types = str_repeat('i', count($product_ids));
