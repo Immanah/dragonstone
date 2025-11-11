@@ -1,45 +1,138 @@
 <?php
+// Start session at the very top
+if (session_status() == PHP_SESSION_NONE) {
+    session_start();
+}
+
 require_once __DIR__ . '/includes/config.php';
+require_once __DIR__ . '/includes/database.php';
 
 $conn = getDatabaseConnection();
 if (!$conn) {
     die("Database connection failed. Please check your configuration.");
 }
 
-// Handle add to cart
+// Handle add to cart with authentication check
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_to_cart'])) {
+    // Check if user is logged in
+    if (!isLoggedIn()) {
+        $_SESSION['error'] = "Please log in to add items to your cart";
+        $_SESSION['redirect_url'] = 'products.php' . (isset($_GET['category']) ? '?category=' . $_GET['category'] : '');
+        header('Location: login.php');
+        exit();
+    }
+    
     $product_id = intval($_POST['product_id']);
     $quantity = isset($_POST['quantity']) ? intval($_POST['quantity']) : 1;
     
-    // Initialize cart if not exists
-    if (!isset($_SESSION['cart'])) {
-        $_SESSION['cart'] = [];
-    }
+    // Validate product exists and is in stock
+    $product_check = $conn->prepare("SELECT name, stock_quantity, price FROM products WHERE product_id = ? AND is_active = 1");
+    $product_check->bind_param("i", $product_id);
+    $product_check->execute();
+    $product_result = $product_check->get_result();
     
-    // Add or update item in cart
-    if (isset($_SESSION['cart'][$product_id])) {
-        $_SESSION['cart'][$product_id] += $quantity;
+    if ($product_result->num_rows === 0) {
+        $_SESSION['error'] = "Product not found or unavailable";
     } else {
-        $_SESSION['cart'][$product_id] = $quantity;
+        $product_data = $product_result->fetch_assoc();
+        
+        if ($product_data['stock_quantity'] < $quantity) {
+            $_SESSION['error'] = "Not enough stock available. Only " . $product_data['stock_quantity'] . " items left.";
+        } else {
+            // Initialize cart if not exists
+            if (!isset($_SESSION['cart'])) {
+                $_SESSION['cart'] = [];
+            }
+            
+            // Add or update item in cart
+            if (isset($_SESSION['cart'][$product_id])) {
+                $_SESSION['cart'][$product_id] += $quantity;
+            } else {
+                $_SESSION['cart'][$product_id] = $quantity;
+            }
+            
+            // Set success message
+            $_SESSION['cart_message'] = "✓ " . htmlspecialchars($product_data['name']) . " added to cart!";
+            
+            // Log cart activity if user is logged in
+            if (isset($_SESSION['user_id'])) {
+                logUserActivity($_SESSION['user_id'], 'cart_add', "Added product ID: $product_id, Quantity: $quantity");
+            }
+        }
     }
     
-    // Set success message
-    $_SESSION['cart_message'] = "Product added to cart!";
+    // Simple redirect
+    $redirect_url = 'products.php';
+    if (isset($_GET['category']) && !empty($_GET['category'])) {
+        $redirect_url .= '?category=' . urlencode($_GET['category']);
+    }
     
-    // Redirect to prevent form resubmission
-    header('Location: products.php' . ($_GET['category'] ? '?category=' . $_GET['category'] : ''));
+    header('Location: ' . $redirect_url);
+    exit();
+}
+
+// Handle add to wishlist with authentication check
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_to_wishlist'])) {
+    // Check if user is logged in
+    if (!isLoggedIn()) {
+        $_SESSION['error'] = "Please log in to add items to your wishlist";
+        $_SESSION['redirect_url'] = 'products.php' . (isset($_GET['category']) ? '?category=' . $_GET['category'] : '');
+        header('Location: login.php');
+        exit();
+    }
+    
+    $product_id = intval($_POST['product_id']);
+    
+    // Validate product exists
+    $product_check = $conn->prepare("SELECT name FROM products WHERE product_id = ? AND is_active = 1");
+    $product_check->bind_param("i", $product_id);
+    $product_check->execute();
+    $product_result = $product_check->get_result();
+    
+    if ($product_result->num_rows === 0) {
+        $_SESSION['error'] = "Product not found or unavailable";
+    } else {
+        $product_data = $product_result->fetch_assoc();
+        
+        // Initialize wishlist if not exists
+        if (!isset($_SESSION['wishlist'])) {
+            $_SESSION['wishlist'] = [];
+        }
+        
+        // Add to wishlist if not already there
+        if (!in_array($product_id, $_SESSION['wishlist'])) {
+            $_SESSION['wishlist'][] = $product_id;
+            $_SESSION['wishlist_message'] = "✓ " . htmlspecialchars($product_data['name']) . " added to wishlist!";
+            
+            // Log wishlist activity if user is logged in
+            if (isset($_SESSION['user_id'])) {
+                logUserActivity($_SESSION['user_id'], 'wishlist_add', "Added product ID: $product_id to wishlist");
+            }
+        } else {
+            $_SESSION['wishlist_message'] = "ℹ️ " . htmlspecialchars($product_data['name']) . " is already in your wishlist!";
+        }
+    }
+    
+    // Simple redirect
+    $redirect_url = 'products.php';
+    if (isset($_GET['category']) && !empty($_GET['category'])) {
+        $redirect_url .= '?category=' . urlencode($_GET['category']);
+    }
+    
+    header('Location: ' . $redirect_url);
     exit();
 }
 
 // Get category filter
-$category_filter = isset($_GET['category']) ? intval($_GET['category']) : '';
+$category_filter = isset($_GET['category']) ? $_GET['category'] : '';
 
 // Build SQL query
-if ($category_filter) {
+if ($category_filter && is_numeric($category_filter)) {
+    $category_filter = intval($category_filter);
     $sql = "SELECT p.*, c.name as category_name 
             FROM products p 
             LEFT JOIN categories c ON p.category_id = c.category_id 
-            WHERE p.is_active = 1 AND p.category_id = ? 
+            WHERE p.is_active = 1 AND p.stock_quantity > 0 AND p.category_id = ? 
             ORDER BY p.date_added DESC";
     $stmt = $conn->prepare($sql);
     $stmt->bind_param("i", $category_filter);
@@ -49,36 +142,41 @@ if ($category_filter) {
     $sql = "SELECT p.*, c.name as category_name 
             FROM products p 
             LEFT JOIN categories c ON p.category_id = c.category_id 
-            WHERE p.is_active = 1 
+            WHERE p.is_active = 1 AND p.stock_quantity > 0
             ORDER BY p.date_added DESC";
     $result = $conn->query($sql);
 }
 
 // Get categories for filter
-$categories_result = $conn->query("SELECT * FROM categories WHERE parent_category_id IS NULL");
+$categories_sql = "SELECT DISTINCT c.category_id, c.name 
+                   FROM categories c 
+                   INNER JOIN products p ON c.category_id = p.category_id 
+                   WHERE p.is_active = 1 AND p.stock_quantity > 0
+                   ORDER BY c.name";
+$categories_result = $conn->query($categories_sql);
 $categories = [];
-while($row = $categories_result->fetch_assoc()) {
-    $categories[] = $row;
+if ($categories_result && $categories_result->num_rows > 0) {
+    while($row = $categories_result->fetch_assoc()) {
+        $categories[] = $row;
+    }
 }
 
 // Get current category name if filtered
 $current_category = '';
-if ($category_filter) {
-    foreach ($categories as $cat) {
-        if ($cat['category_id'] == $category_filter) {
-            $current_category = $cat['name'];
-            break;
-        }
+if ($category_filter && is_numeric($category_filter)) {
+    $category_sql = "SELECT name FROM categories WHERE category_id = ?";
+    $category_stmt = $conn->prepare($category_sql);
+    $category_stmt->bind_param("i", $category_filter);
+    $category_stmt->execute();
+    $category_result = $category_stmt->get_result();
+    if ($category_result->num_rows > 0) {
+        $current_category = $category_result->fetch_assoc()['name'];
     }
 }
 
 $page_title = $current_category ? $current_category . " - Sustainable Products" : "Sustainable Products - DragonStone";
 require_once __DIR__ . '/includes/header.php';
 ?>
-
-<div class="organic-shape shape-1"></div>
-<div class="organic-shape shape-2"></div>
-<div class="organic-shape shape-3"></div>
 
 <div class="container py-5">
     <!-- Page Header -->
@@ -111,7 +209,36 @@ require_once __DIR__ . '/includes/header.php';
         <?php unset($_SESSION['cart_message']); ?>
     <?php endif; ?>
     
+    <?php if (isset($_SESSION['wishlist_message'])): ?>
+        <div class="alert alert-info alert-dismissible fade show mb-4" role="alert">
+            <i class="fas fa-heart me-2"></i>
+            <?php echo $_SESSION['wishlist_message']; ?>
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+        <?php unset($_SESSION['wishlist_message']); ?>
+    <?php endif; ?>
+    
+    <!-- Error Messages -->
+    <?php if (isset($_SESSION['error'])): ?>
+        <div class="alert alert-danger alert-dismissible fade show mb-4" role="alert">
+            <i class="fas fa-exclamation-triangle me-2"></i>
+            <?php echo $_SESSION['error']; ?>
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+        <?php unset($_SESSION['error']); ?>
+    <?php endif; ?>
+    
+    <!-- Authentication Reminder for Guests -->
+    <?php if (!isLoggedIn()): ?>
+        <div class="alert alert-warning alert-dismissible fade show mb-4" role="alert">
+            <i class="fas fa-info-circle me-2"></i>
+            <strong>Heads up!</strong> You need to <a href="login.php" class="alert-link">log in</a> to add items to your cart or wishlist.
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    <?php endif; ?>
+    
     <!-- Category Filters -->
+    <?php if (!empty($categories)): ?>
     <div class="card mb-5">
         <div class="card-body">
             <h5 class="card-title mb-3">Filter by Category</h5>
@@ -122,12 +249,13 @@ require_once __DIR__ . '/includes/header.php';
                 <?php foreach($categories as $category): ?>
                     <a href="products.php?category=<?php echo $category['category_id']; ?>" 
                        class="btn btn-outline-primary <?php echo $category_filter == $category['category_id'] ? 'active' : ''; ?>">
-                        <?php echo $category['name']; ?>
+                        <?php echo htmlspecialchars($category['name']); ?>
                     </a>
                 <?php endforeach; ?>
             </div>
         </div>
     </div>
+    <?php endif; ?>
 
     <!-- Products Count and Sort -->
     <div class="d-flex justify-content-between align-items-center mb-4">
@@ -143,6 +271,7 @@ require_once __DIR__ . '/includes/header.php';
                 ?>
             </p>
         </div>
+        <?php if ($product_count > 0): ?>
         <div class="products-sort">
             <select class="form-select" id="sortProducts" style="width: auto;">
                 <option value="newest">Sort: Newest First</option>
@@ -152,6 +281,7 @@ require_once __DIR__ . '/includes/header.php';
                 <option value="name">Name: A to Z</option>
             </select>
         </div>
+        <?php endif; ?>
     </div>
 
     <!-- Products Grid -->
@@ -163,34 +293,39 @@ require_once __DIR__ . '/includes/header.php';
                 $stock_text = $product['stock_quantity'] > 10 ? 'In Stock' : 
                              ($product['stock_quantity'] > 0 ? 'Low Stock' : 'Out of Stock');
                 
-                // Different images for different products
-                $product_images = [
-                    1 => ['includes/products/cleaning1.jpg', 'includes/products/cleaning2.jpg', 'includes/products/cleaning3.jpg'],
-                    2 => ['includes/products/kitchen1.jpg', 'includes/products/kitchen2.jpg', 'includes/products/kitchen3.jpg'],
-                    3 => ['includes/products/home1.jpg', 'includes/products/home2.jpg', 'includes/products/home3.jpg'],
-                    4 => ['includes/products/personal1.jpg', 'includes/products/personal2.jpg', 'includes/products/personal3.jpg'],
-                    5 => ['includes/products/garden1.jpg', 'includes/products/garden2.jpg', 'includes/products/garden3.jpg'],
-                    6 => ['includes/products/family1.jpg', 'includes/products/family2.jpg', 'includes/products/family3.jpg'],
-                    7 => ['includes/products/outdoor1.jpg', 'includes/products/outdoor2.jpg', 'includes/products/outdoor3.jpg']
-                ];
+                // Check if product is in wishlist
+                $in_wishlist = false;
+                if (isset($_SESSION['wishlist']) && in_array($product['product_id'], $_SESSION['wishlist'])) {
+                    $in_wishlist = true;
+                }
                 
-                $category_id = $product['category_id'];
-                $product_id_mod = ($product['product_id'] - 1) % 3;
-                $main_image = isset($product_images[$category_id][$product_id_mod]) 
-                    ? $product_images[$category_id][$product_id_mod] 
-                    : 'includes/products/default.jpg';
-                
-                // Fallback to your screenshot
-                $main_image = 'includes/Screenshot 2025-10-30 145731.png';
+                // FIXED: Use actual product images from database
+                $main_image = 'includes/Screenshot 2025-10-30 145731.png'; // Fallback image
+                if (!empty($product['image_path'])) {
+                    $main_image = $product['image_path'];
+                } elseif (!empty($product['image_url'])) {
+                    $main_image = $product['image_url'];
+                }
             ?>
                 <div class="col-lg-4 col-md-6" data-product data-price="<?php echo $product['price']; ?>" 
-                     data-co2="<?php echo $product['co2_saved']; ?>" data-name="<?php echo htmlspecialchars($product['name']); ?>">
+                     data-co2="<?php echo $product['co2_saved']; ?>" data-name="<?php echo htmlspecialchars($product['name']); ?>"
+                     data-date="<?php echo strtotime($product['date_added']); ?>">
                     <div class="card h-100 product-card">
-                        <div class="product-image-container">
-                            <img src="<?php echo $main_image; ?>" 
+                        <div class="product-image-container position-relative">
+                            <img src="<?php echo htmlspecialchars($main_image); ?>" 
                                  alt="<?php echo htmlspecialchars($product['name']); ?>"
                                  class="card-img-top product-image"
                                  onerror="this.src='includes/Screenshot 2025-10-30 145731.png'">
+                            
+                            <!-- Wishlist Button -->
+                            <form method="POST" action="products.php<?php echo $category_filter ? '?category=' . $category_filter : ''; ?>" class="position-absolute top-0 end-0 m-2">
+                                <input type="hidden" name="product_id" value="<?php echo $product['product_id']; ?>">
+                                <input type="hidden" name="add_to_wishlist" value="1">
+                                <button type="submit" class="btn wishlist-btn <?php echo $in_wishlist ? 'btn-danger' : 'btn-light'; ?> rounded-circle shadow-sm" 
+                                        <?php echo !isLoggedIn() ? 'disabled title="Please log in to add to wishlist"' : ''; ?>>
+                                    <i class="fas fa-heart"></i>
+                                </button>
+                            </form>
                         </div>
                         <div class="card-body d-flex flex-column">
                             <!-- Category Badge -->
@@ -217,7 +352,7 @@ require_once __DIR__ . '/includes/header.php';
                             <div class="environmental-impact mb-3 p-3 bg-light rounded">
                                 <div class="d-flex align-items-center mb-2">
                                     <i class="fas fa-leaf text-success me-2"></i>
-                                    <strong class="text-success">Saves <?php echo $product['co2_saved']; ?>g CO₂</strong>
+                                    <strong class="text-success">Saves <?php echo $product['co2_saved']; ?>kg CO₂</strong>
                                 </div>
                                 <small class="text-muted">vs. conventional alternatives</small>
                             </div>
@@ -235,7 +370,7 @@ require_once __DIR__ . '/includes/header.php';
                             </div>
                             
                             <!-- Add to Cart Form -->
-                            <form method="POST" class="mt-auto">
+                            <form method="POST" action="products.php<?php echo $category_filter ? '?category=' . $category_filter : ''; ?>" class="mt-auto">
                                 <input type="hidden" name="product_id" value="<?php echo $product['product_id']; ?>">
                                 <input type="hidden" name="add_to_cart" value="1">
                                 <input type="hidden" name="quantity" value="1">
@@ -243,9 +378,10 @@ require_once __DIR__ . '/includes/header.php';
                                 <div class="d-grid gap-2">
                                     <?php if ($product['stock_quantity'] > 0): ?>
                                         <button type="submit" class="btn btn-success btn-lg add-to-cart" 
-                                                data-product-id="<?php echo $product['product_id']; ?>">
+                                                data-product-id="<?php echo $product['product_id']; ?>"
+                                                <?php echo !isLoggedIn() ? 'disabled' : ''; ?>>
                                             <i class="fas fa-shopping-cart me-2"></i>
-                                            Add to Cart
+                                            <?php echo isLoggedIn() ? 'Add to Cart' : 'Login to Add to Cart'; ?>
                                         </button>
                                     <?php else: ?>
                                         <button type="button" class="btn btn-outline-secondary btn-lg" disabled>
@@ -273,9 +409,9 @@ require_once __DIR__ . '/includes/header.php';
                         <h3>No Products Found</h3>
                         <p class="text-muted mb-4">
                             <?php if ($current_category): ?>
-                                We couldn't find any products in the <?php echo htmlspecialchars($current_category); ?> category.
+                                We couldn't find any active products in the <?php echo htmlspecialchars($current_category); ?> category.
                             <?php else: ?>
-                                We're currently restocking our sustainable products collection.
+                                We're currently restocking our sustainable products collection. Please check back soon!
                             <?php endif; ?>
                         </p>
                         <div class="d-flex justify-content-center gap-3">
@@ -283,8 +419,8 @@ require_once __DIR__ . '/includes/header.php';
                                 View All Products
                             </a>
                             <?php if (isset($_SESSION['user_role']) && $_SESSION['user_role'] == 'Admin'): ?>
-                                <a href="admin/products.php" class="btn btn-outline-primary">
-                                    Add Products
+                                <a href="admin/productmanagement.php" class="btn btn-outline-primary">
+                                    Manage Products
                                 </a>
                             <?php endif; ?>
                         </div>
@@ -318,7 +454,7 @@ require_once __DIR__ . '/includes/header.php';
                                 <p class="mb-0">Sustainable Products</p>
                             </div>
                             <div class="col-md-4">
-                                <div class="display-4 fw-bold"><?php echo $total_co2_saved; ?>g</div>
+                                <div class="display-4 fw-bold"><?php echo $total_co2_saved; ?>kg</div>
                                 <p class="mb-0">CO₂ Savings Potential</p>
                             </div>
                             <div class="col-md-4">
@@ -362,12 +498,11 @@ body {
     z-index: 2;
 }
 
-/* Organic Shapes */
+/* Organic Shapes - Static */
 .organic-shape {
     position: absolute;
-    opacity: 0.25;
+    opacity: 0.15;
     border-radius: 60% 40% 30% 70%;
-    animation: float 8s ease-in-out infinite;
     z-index: 1;
 }
 
@@ -377,7 +512,6 @@ body {
     background: var(--primary-green);
     top: 10%;
     left: 5%;
-    animation-delay: 0s;
 }
 
 .shape-2 {
@@ -386,7 +520,6 @@ body {
     background: var(--secondary-green);
     top: 60%;
     right: 10%;
-    animation-delay: -2s;
 }
 
 .shape-3 {
@@ -395,33 +528,16 @@ body {
     background: var(--text-green);
     bottom: 10%;
     left: 15%;
-    animation-delay: -4s;
 }
 
-@keyframes float {
-    0%, 100% {
-        transform: translateY(0px) rotate(0deg);
-    }
-    50% {
-        transform: translateY(-20px) rotate(5deg);
-    }
-}
-
-/* Cards */
+/* Cards - Static */
 .card {
     background: rgba(255, 255, 255, 0.95);
     border: none;
     border-radius: var(--border-radius-cards);
     box-shadow: 0 8px 32px rgba(45, 74, 45, 0.1);
     backdrop-filter: blur(10px);
-    transition: all 0.3s ease;
     margin-bottom: 0;
-}
-
-.card:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 12px 40px rgba(45, 74, 45, 0.15);
-    border: 1px solid rgba(74, 107, 74, 0.1);
 }
 
 /* Product Image */
@@ -429,17 +545,32 @@ body {
     position: relative;
     overflow: hidden;
     border-radius: var(--border-radius-cards) var(--border-radius-cards) 0 0;
+    height: 250px;
 }
 
 .product-image {
     width: 100%;
-    height: 250px;
+    height: 100%;
     object-fit: cover;
-    transition: transform 0.3s ease;
 }
 
-.product-card:hover .product-image {
-    transform: scale(1.05);
+/* Wishlist Button */
+.wishlist-btn {
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+}
+
+.wishlist-btn:hover:not(:disabled) {
+    transform: scale(1.1);
+}
+
+.wishlist-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
 }
 
 /* Buttons */
@@ -449,26 +580,23 @@ body {
     border-radius: 50px;
     padding: 12px 24px;
     font-weight: 600;
-    transition: all 0.3s ease;
 }
 
-.btn-success:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(74, 107, 74, 0.4);
-    background: linear-gradient(135deg, var(--secondary-green) 0%, var(--primary-green) 100%);
+.btn-success:disabled {
+    background: #6c757d;
+    cursor: not-allowed;
 }
 
 .btn-outline-primary {
     border: 2px solid var(--primary-green);
     color: var(--primary-green);
     border-radius: 50px;
-    transition: all 0.3s ease;
 }
 
 .btn-outline-primary:hover {
     background-color: var(--primary-green);
     border-color: var(--primary-green);
-    transform: translateY(-1px);
+    color: white;
 }
 
 /* Environmental Impact */
@@ -515,7 +643,7 @@ body {
         font-size: 2rem;
     }
     
-    .product-image {
+    .product-image-container {
         height: 200px;
     }
     
@@ -526,6 +654,11 @@ body {
     
     .products-sort .form-select {
         width: 100% !important;
+    }
+    
+    .wishlist-btn {
+        width: 35px;
+        height: 35px;
     }
 }
 </style>
@@ -547,6 +680,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 const co2B = parseFloat(b.getAttribute('data-co2'));
                 const nameA = a.getAttribute('data-name').toLowerCase();
                 const nameB = b.getAttribute('data-name').toLowerCase();
+                const dateA = parseInt(a.getAttribute('data-date'));
+                const dateB = parseInt(b.getAttribute('data-date'));
                 
                 switch(this.value) {
                     case 'price_low':
@@ -558,7 +693,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     case 'name':
                         return nameA.localeCompare(nameB);
                     default: // newest
-                        return 0;
+                        return dateB - dateA;
                 }
             });
             
@@ -574,6 +709,13 @@ document.addEventListener('DOMContentLoaded', function() {
     const addToCartButtons = document.querySelectorAll('.add-to-cart');
     addToCartButtons.forEach(button => {
         button.addEventListener('click', function(e) {
+            // If button is disabled (user not logged in), prevent form submission
+            if (this.disabled) {
+                e.preventDefault();
+                window.location.href = 'login.php';
+                return;
+            }
+            
             const originalHTML = this.innerHTML;
             this.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Adding...';
             this.disabled = true;
@@ -582,6 +724,17 @@ document.addEventListener('DOMContentLoaded', function() {
                 this.innerHTML = originalHTML;
                 this.disabled = false;
             }, 2000);
+        });
+    });
+    
+    // Wishlist button handling for disabled state
+    const wishlistButtons = document.querySelectorAll('.wishlist-btn');
+    wishlistButtons.forEach(button => {
+        button.addEventListener('click', function(e) {
+            if (this.disabled) {
+                e.preventDefault();
+                window.location.href = 'login.php';
+            }
         });
     });
 });

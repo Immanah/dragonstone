@@ -1,6 +1,12 @@
 <?php
-require_once 'includes/auth.php';
-require_once 'includes/database.php';
+// Start session at the very top - THIS WAS MISSING!
+if (session_status() == PHP_SESSION_NONE) {
+    session_start();
+}
+
+require_once __DIR__ . '/includes/config.php';
+require_once __DIR__ . '/includes/database.php';
+require_once __DIR__ . '/includes/auth.php';
 
 $conn = getDatabaseConnection();
 
@@ -18,6 +24,54 @@ $product = $product_stmt->get_result()->fetch_assoc();
 
 if (!$product) {
     header('Location: products.php');
+    exit();
+}
+
+// Handle Add to Cart - IMPROVED VERSION
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_to_cart'])) {
+    $quantity = isset($_POST['quantity']) ? intval($_POST['quantity']) : 1;
+    
+    // Validate quantity
+    if ($quantity < 1 || $quantity > $product['stock_quantity']) {
+        $cart_error = "Invalid quantity selected.";
+    } else {
+        // Initialize cart if not exists
+        if (!isset($_SESSION['cart'])) {
+            $_SESSION['cart'] = [];
+        }
+        
+        // Add or update item in cart
+        if (isset($_SESSION['cart'][$product_id])) {
+            $_SESSION['cart'][$product_id] += $quantity;
+        } else {
+            $_SESSION['cart'][$product_id] = $quantity;
+        }
+        
+        // Set success message
+        $_SESSION['cart_message'] = "Product added to cart successfully!";
+        
+        // Redirect to prevent form resubmission
+        header('Location: product-detail.php?id=' . $product_id);
+        exit();
+    }
+}
+
+// Handle Add to Wishlist - NEW FUNCTIONALITY
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_to_wishlist'])) {
+    // Initialize wishlist if not exists
+    if (!isset($_SESSION['wishlist'])) {
+        $_SESSION['wishlist'] = [];
+    }
+    
+    // Add to wishlist if not already there
+    if (!in_array($product_id, $_SESSION['wishlist'])) {
+        $_SESSION['wishlist'][] = $product_id;
+        $_SESSION['wishlist_message'] = "Product added to wishlist!";
+    } else {
+        $_SESSION['wishlist_message'] = "Product is already in your wishlist!";
+    }
+    
+    header('Location: product-detail.php?id=' . $product_id);
     exit();
 }
 
@@ -79,7 +133,8 @@ $avg_stmt->bind_param("i", $product_id);
 $avg_stmt->execute();
 $rating_data = $avg_stmt->get_result()->fetch_assoc();
 
-include 'includes/header.php';
+$page_title = $product['name'] . " - DragonStone";
+require_once __DIR__ . '/includes/header.php';
 ?>
 
 <style>
@@ -111,9 +166,8 @@ body {
 /* Organic Shapes */
 .organic-shape {
     position: absolute;
-    opacity: 0.25;
+    opacity: 0.15;
     border-radius: 60% 40% 30% 70%;
-    animation: float 8s ease-in-out infinite;
     z-index: 1;
 }
 
@@ -123,7 +177,6 @@ body {
     background: var(--primary-green);
     top: 15%;
     left: 8%;
-    animation-delay: 0s;
 }
 
 .shape-2 {
@@ -132,7 +185,6 @@ body {
     background: var(--secondary-green);
     top: 70%;
     right: 12%;
-    animation-delay: -3s;
 }
 
 .shape-3 {
@@ -141,16 +193,6 @@ body {
     background: var(--text-green);
     bottom: 20%;
     left: 20%;
-    animation-delay: -6s;
-}
-
-@keyframes float {
-    0%, 100% {
-        transform: translateY(0px) rotate(0deg);
-    }
-    50% {
-        transform: translateY(-15px) rotate(5deg);
-    }
 }
 
 /* Cards */
@@ -160,14 +202,7 @@ body {
     border-radius: var(--border-radius-cards);
     box-shadow: 0 8px 32px rgba(45, 74, 45, 0.1);
     backdrop-filter: blur(10px);
-    transition: all 0.3s ease;
     margin-bottom: 1.5rem;
-}
-
-.card:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 12px 40px rgba(45, 74, 45, 0.15);
-    border: 1px solid rgba(74, 107, 74, 0.1);
 }
 
 .card-header {
@@ -185,13 +220,10 @@ body {
     border-radius: 50px;
     padding: 12px 30px;
     font-weight: 600;
-    transition: all 0.3s ease;
     box-shadow: 0 4px 15px rgba(74, 107, 74, 0.3);
 }
 
 .btn-dragon:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(74, 107, 74, 0.4);
     background: linear-gradient(135deg, var(--secondary-green) 0%, var(--primary-green) 100%);
     color: white;
 }
@@ -200,14 +232,27 @@ body {
     border: 2px solid var(--primary-green);
     color: var(--primary-green);
     border-radius: 50px;
-    transition: all 0.3s ease;
 }
 
 .btn-outline-primary:hover {
     background-color: var(--primary-green);
     border-color: var(--primary-green);
-    transform: translateY(-1px);
     color: white;
+}
+
+/* Wishlist Button */
+.wishlist-btn {
+    width: 50px;
+    height: 50px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: 50%;
+    position: absolute;
+    top: 15px;
+    right: 15px;
+    z-index: 10;
 }
 
 /* Forms */
@@ -215,7 +260,6 @@ body {
     border: 2px solid rgba(74, 107, 74, 0.1);
     border-radius: 15px;
     padding: 12px 15px;
-    transition: all 0.3s ease;
 }
 
 .form-control:focus, .form-select:focus {
@@ -313,22 +357,28 @@ h1, h2, h3, h4, h5, h6 {
     padding: 1.5rem;
     text-align: center;
     border: 2px solid rgba(90, 122, 90, 0.2);
-    transition: all 0.3s ease;
 }
 
-.carbon-display:hover {
-    transform: translateY(-3px);
-    border-color: var(--secondary-green);
+.product-image-container {
+    position: relative;
+    border-radius: 15px;
+    overflow: hidden;
+    margin-bottom: 1.5rem;
+}
+
+.product-detail-image {
+    width: 100%;
+    height: 400px;
+    object-fit: cover;
+    border-radius: 15px;
 }
 
 .reviews-list .border-bottom {
     border-bottom: 1px solid rgba(74, 107, 74, 0.1) !important;
-    transition: all 0.3s ease;
 }
 
 .reviews-list .border-bottom:hover {
     background-color: rgba(74, 107, 74, 0.05);
-    transform: translateX(5px);
 }
 
 .bg-light {
@@ -362,6 +412,34 @@ h1, h2, h3, h4, h5, h6 {
     color: #e9b949 !important;
     font-weight: 600;
 }
+
+.stock-danger {
+    color: #dc3545 !important;
+    font-weight: 600;
+}
+
+/* Action buttons container */
+.action-buttons {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 1rem;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .action-buttons {
+        flex-direction: column;
+    }
+    
+    .product-detail-image {
+        height: 300px;
+    }
+    
+    .wishlist-btn {
+        width: 45px;
+        height: 45px;
+    }
+}
 </style>
 
 <div class="organic-shape shape-1"></div>
@@ -378,67 +456,151 @@ h1, h2, h3, h4, h5, h6 {
         </ol>
     </nav>
 
+    <!-- Success Messages -->
+    <?php if (isset($_SESSION['cart_message'])): ?>
+        <div class="alert alert-success alert-dismissible fade show mb-4" role="alert">
+            <i class="fas fa-check-circle me-2"></i>
+            <?php echo $_SESSION['cart_message']; ?>
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+        <?php unset($_SESSION['cart_message']); ?>
+    <?php endif; ?>
+    
+    <?php if (isset($_SESSION['wishlist_message'])): ?>
+        <div class="alert alert-info alert-dismissible fade show mb-4" role="alert">
+            <i class="fas fa-heart me-2"></i>
+            <?php echo $_SESSION['wishlist_message']; ?>
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+        <?php unset($_SESSION['wishlist_message']); ?>
+    <?php endif; ?>
+
+    <!-- Cart Error Message -->
+    <?php if (isset($cart_error)): ?>
+        <div class="alert alert-danger alert-dismissible fade show mb-4" role="alert">
+            <i class="fas fa-exclamation-circle me-2"></i>
+            <?php echo $cart_error; ?>
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    <?php endif; ?>
+
     <div class="row">
         <!-- Product Images & Info -->
         <div class="col-md-6">
             <div class="card">
-                <div class="card-body text-center">
-                    <div class="fs-1 mb-3">
-                        <?php 
-                        $icons = ['🧼', '🍴', '🏠', '🚿', '🌿', '👶', '🌳'];
-                        echo $icons[$product['category_id']-1] ?? '📦'; 
+                <div class="card-body">
+                    <!-- Product Image with Wishlist Button -->
+                    <div class="product-image-container position-relative">
+                        <?php
+                        // Get the product image
+                        $product_image = 'includes/Screenshot 2025-10-30 145731.png';
+                        if (!empty($product['image_path'])) {
+                            $product_image = $product['image_path'];
+                        } elseif (!empty($product['image_url'])) {
+                            $product_image = $product['image_url'];
+                        }
+                        
+                        // Check if product is in wishlist
+                        $in_wishlist = false;
+                        if (isset($_SESSION['wishlist']) && in_array($product_id, $_SESSION['wishlist'])) {
+                            $in_wishlist = true;
+                        }
                         ?>
+                        <img src="<?php echo htmlspecialchars($product_image); ?>" 
+                             alt="<?php echo htmlspecialchars($product['name']); ?>"
+                             class="product-detail-image"
+                             onerror="this.src='includes/Screenshot 2025-10-30 145731.png'">
+                        
+                        <!-- Wishlist Button -->
+                        <form method="POST" action="product-detail.php?id=<?php echo $product_id; ?>">
+                            <input type="hidden" name="product_id" value="<?php echo $product_id; ?>">
+                            <input type="hidden" name="add_to_wishlist" value="1">
+                            <button type="submit" class="btn wishlist-btn <?php echo $in_wishlist ? 'btn-danger' : 'btn-light'; ?> shadow">
+                                <i class="fas fa-heart"></i>
+                            </button>
+                        </form>
                     </div>
-                    <h2><?php echo htmlspecialchars($product['name']); ?></h2>
-                    <p class="text-muted"><?php echo htmlspecialchars($product['category_name']); ?></p>
                     
-                    <!-- Rating -->
-                    <?php if ($rating_data['review_count'] > 0): ?>
-                        <div class="mb-3">
-                            <div class="fs-4">
-                                <?php
-                                $avg_rating = round($rating_data['avg_rating'], 1);
-                                $full_stars = floor($avg_rating);
-                                $half_star = ($avg_rating - $full_stars) >= 0.5;
-                                
-                                for ($i = 0; $i < $full_stars; $i++) echo '⭐';
-                                if ($half_star) echo '⭐';
-                                ?>
+                    <div class="text-center">
+                        <h2><?php echo htmlspecialchars($product['name']); ?></h2>
+                        <p class="text-muted"><?php echo htmlspecialchars($product['category_name']); ?></p>
+                        
+                        <!-- Rating -->
+                        <?php if ($rating_data['review_count'] > 0): ?>
+                            <div class="mb-3">
+                                <div class="fs-4">
+                                    <?php
+                                    $avg_rating = round($rating_data['avg_rating'], 1);
+                                    $full_stars = floor($avg_rating);
+                                    $half_star = ($avg_rating - $full_stars) >= 0.5;
+                                    
+                                    for ($i = 0; $i < $full_stars; $i++) echo '⭐';
+                                    if ($half_star) echo '⭐';
+                                    ?>
+                                </div>
+                                <small class="text-muted"><?php echo $avg_rating; ?> (<?php echo $rating_data['review_count']; ?> reviews)</small>
                             </div>
-                            <small class="text-muted"><?php echo $avg_rating; ?> (<?php echo $rating_data['review_count']; ?> reviews)</small>
+                        <?php else: ?>
+                            <div class="mb-3">
+                                <small class="text-muted">No reviews yet</small>
+                            </div>
+                        <?php endif; ?>
+                        
+                        <!-- Environmental Impact -->
+                        <div class="carbon-display mb-4">
+                            <h4 class="text-success">🌱 Saves <?php echo $product['co2_saved']; ?>kg CO₂</h4>
+                            <p class="text-muted">Compared to conventional alternatives</p>
                         </div>
-                    <?php endif; ?>
-                    
-                    <!-- Environmental Impact -->
-                    <div class="carbon-display mb-4">
-                        <h4 class="text-success">🌱 <?php echo $product['co2_saved']; ?>kg CO2 Saved</h4>
-                        <p class="text-muted">Compared to conventional alternatives</p>
+                        
+                        <!-- Price & Stock -->
+                        <div class="mb-4">
+                            <h3 class="text-success">R<?php echo number_format($product['price'], 2); ?></h3>
+                            <?php if ($product['stock_quantity'] > 10): ?>
+                                <p class="stock-success">✓ In Stock (<?php echo $product['stock_quantity']; ?> available)</p>
+                            <?php elseif ($product['stock_quantity'] > 0): ?>
+                                <p class="stock-warning">⚠ Low Stock (<?php echo $product['stock_quantity']; ?> left)</p>
+                            <?php else: ?>
+                                <p class="stock-danger">✗ Out of Stock</p>
+                            <?php endif; ?>
+                        </div>
                     </div>
                     
-                    <!-- Price & Stock -->
-                    <div class="mb-4">
-                        <h3 class="text-success">R<?php echo number_format($product['price'], 2); ?></h3>
-                        <p class="<?php echo $product['stock_quantity'] > 10 ? 'stock-success' : 'stock-warning'; ?>">
-                            <?php echo $product['stock_quantity']; ?> in stock
-                        </p>
-                    </div>
-                    
-                    <!-- Add to Cart -->
-                    <form method="POST" action="cart.php" class="mb-3">
-                        <input type="hidden" name="product_id" value="<?php echo $product['product_id']; ?>">
+                    <!-- Add to Cart Form - FIXED ACTION -->
+                    <form method="POST" action="product-detail.php?id=<?php echo $product_id; ?>" class="mb-3">
+                        <input type="hidden" name="product_id" value="<?php echo $product_id; ?>">
                         <input type="hidden" name="add_to_cart" value="1">
                         <div class="row g-2 mb-3">
                             <div class="col-4">
+                                <label class="form-label">Quantity</label>
                                 <input type="number" class="form-control" name="quantity" value="1" min="1" max="<?php echo $product['stock_quantity']; ?>">
                             </div>
                             <div class="col-8">
-                                <button type="submit" class="btn btn-dragon w-100">Add to Cart</button>
+                                <label class="form-label">&nbsp;</label>
+                                <?php if ($product['stock_quantity'] > 0): ?>
+                                    <button type="submit" class="btn btn-dragon w-100 add-to-cart-btn">
+                                        <i class="fas fa-shopping-cart me-2"></i>Add to Cart
+                                    </button>
+                                <?php else: ?>
+                                    <button type="button" class="btn btn-secondary w-100" disabled>
+                                        <i class="fas fa-times me-2"></i>Out of Stock
+                                    </button>
+                                <?php endif; ?>
                             </div>
                         </div>
                     </form>
                     
+                    <!-- Quick Action Buttons -->
+                    <div class="action-buttons">
+                        <a href="cart.php" class="btn btn-outline-primary flex-fill">
+                            <i class="fas fa-shopping-cart me-2"></i>View Cart
+                        </a>
+                        <a href="products.php" class="btn btn-outline-primary flex-fill">
+                            <i class="fas fa-store me-2"></i>Continue Shopping
+                        </a>
+                    </div>
+                    
                     <!-- EcoPoints Info -->
-                    <div class="alert alert-info">
+                    <div class="alert alert-info mt-3">
                         <small>🎁 Earn <strong>75 EcoPoints</strong> when you purchase this item!</small>
                     </div>
                 </div>
@@ -453,14 +615,24 @@ h1, h2, h3, h4, h5, h6 {
                     <h5 class="mb-0">Product Details</h5>
                 </div>
                 <div class="card-body">
-                    <p><?php echo nl2br(htmlspecialchars($product['description'])); ?></p>
+                    <p class="lead"><?php echo nl2br(htmlspecialchars($product['description'])); ?></p>
                     
-                    <div class="row mt-3">
-                        <div class="col-6">
-                            <small><strong>Category:</strong><br><?php echo htmlspecialchars($product['category_name']); ?></small>
+                    <div class="row mt-4">
+                        <div class="col-md-6 mb-3">
+                            <strong>Category:</strong><br>
+                            <span class="text-muted"><?php echo htmlspecialchars($product['category_name']); ?></span>
                         </div>
-                        <div class="col-6">
-                            <small><strong>SKU:</strong><br>DRG<?php echo str_pad($product['product_id'], 3, '0', STR_PAD_LEFT); ?></small>
+                        <div class="col-md-6 mb-3">
+                            <strong>Product SKU:</strong><br>
+                            <span class="text-muted">DRG<?php echo str_pad($product['product_id'], 3, '0', STR_PAD_LEFT); ?></span>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <strong>CO₂ Savings:</strong><br>
+                            <span class="text-success"><?php echo $product['co2_saved']; ?>kg per item</span>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <strong>EcoPoints:</strong><br>
+                            <span class="text-success">+75 points on purchase</span>
                         </div>
                     </div>
                 </div>
@@ -470,7 +642,7 @@ h1, h2, h3, h4, h5, h6 {
             <div class="card">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <h5 class="mb-0">Customer Reviews</h5>
-                    <span class="badge bg-primary"><?php echo $rating_data['review_count']; ?> reviews</span>
+                    <span class="badge bg-primary"><?php echo $rating_data['review_count'] ?? 0; ?> reviews</span>
                 </div>
                 <div class="card-body">
                     <!-- Review Form -->
@@ -507,8 +679,8 @@ h1, h2, h3, h4, h5, h6 {
                         </div>
                     <?php else: ?>
                         <div class="alert alert-info text-center">
-                            <a href="login.php" class="btn btn-sm btn-outline-primary">Login to write a review</a>
-                            <small class="d-block mt-1">Earn 25 EcoPoints for each review!</small>
+                            <a href="login.php" class="btn btn-sm btn-outline-primary me-2">Login to write a review</a>
+                            <small class="d-block mt-2">Earn 25 EcoPoints for each review!</small>
                         </div>
                     <?php endif; ?>
                     
@@ -530,7 +702,7 @@ h1, h2, h3, h4, h5, h6 {
                                 </div>
                             <?php endwhile; ?>
                         <?php else: ?>
-                            <p class="text-muted text-center">No reviews yet. Be the first to review this product!</p>
+                            <p class="text-muted text-center py-3">No reviews yet. Be the first to review this product!</p>
                         <?php endif; ?>
                     </div>
                 </div>
@@ -539,7 +711,41 @@ h1, h2, h3, h4, h5, h6 {
     </div>
 </div>
 
+<script>
+// Add to cart animation
+document.addEventListener('DOMContentLoaded', function() {
+    const addToCartButtons = document.querySelectorAll('.add-to-cart-btn');
+    addToCartButtons.forEach(button => {
+        button.addEventListener('click', function(e) {
+            const originalHTML = this.innerHTML;
+            this.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Adding...';
+            this.disabled = true;
+            
+            setTimeout(() => {
+                this.innerHTML = originalHTML;
+                this.disabled = false;
+            }, 2000);
+        });
+    });
+    
+    // Wishlist button animation
+    const wishlistButtons = document.querySelectorAll('.wishlist-btn');
+    wishlistButtons.forEach(button => {
+        button.addEventListener('click', function(e) {
+            const originalHTML = this.innerHTML;
+            this.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+            this.disabled = true;
+            
+            setTimeout(() => {
+                this.innerHTML = originalHTML;
+                this.disabled = false;
+            }, 1500);
+        });
+    });
+});
+</script>
+
 <?php 
 $conn->close();
-include 'includes/footer.php'; 
+require_once __DIR__ . '/includes/footer.php'; 
 ?>

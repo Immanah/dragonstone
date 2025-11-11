@@ -92,24 +92,24 @@ include 'includes/header.php';
         <div class="categories-grid">
             <?php
             $categories = [
-                ['Cleaning & Household', 'Eco-friendly cleaning supplies', 'clean'],
-                ['Kitchen & Dining', 'Sustainable kitchen essentials', 'kitchen'],
-                ['Home Décor & Living', 'Eco-conscious home decor', 'decor'],
-                ['Bathroom & Personal Care', 'Natural personal care products', 'bathroom'],
-                ['Lifestyle & Wellness', 'Sustainable lifestyle items', 'wellness'],
-                ['Kids & Pets', 'Eco-friendly for family and pets', 'family'],
-                ['Outdoor & Garden', 'Sustainable outdoor living', 'garden']
+                ['Cleaning & Household', 'Eco-friendly cleaning supplies', 'cleaning and household plcaeholder.jpg', 'cleaning-household'],
+                ['Kitchen & Dining', 'Sustainable kitchen essentials', 'kitchen&household placeholder.jpg', 'kitchen-dining'],
+                ['Home Décor & Living', 'Eco-conscious home decor', 'home decor placeholder.jpg', 'home-decor'],
+                ['Bathroom & Personal Care', 'Natural personal care products', 'bathroom placeholder.jpg', 'bathroom-care'],
+                ['Lifestyle & Wellness', 'Sustainable lifestyle items', 'lifestyle placeholder.jpg', 'lifestyle-wellness'],
+                ['Kids & Pets', 'Eco-friendly for family and pets', 'kids & pets placeholder.jpg', 'kids-pets'],
+                ['Outdoor & Garden', 'Sustainable outdoor living', 'outdoor placeholder.jpg', 'outdoor-garden']
             ];
             
             foreach ($categories as $category) {
                 echo "
                 <div class='category-card'>
-                    <div class='category-icon category-{$category[2]}'>
-                        <!-- Icon will be added via CSS -->
+                    <div class='category-icon'>
+                        <img src='images/{$category[2]}' alt='{$category[0]}' class='category-img'>
                     </div>
                     <h3>{$category[0]}</h3>
                     <p>{$category[1]}</p>
-                    <a href='products.php' class='btn btn-primary'>Shop Now</a>
+                    <a href='products.php?category={$category[3]}' class='btn btn-primary'>Shop Now</a>
                 </div>";
             }
             ?>
@@ -200,11 +200,11 @@ include 'includes/header.php';
     --color-sand-dark: #d4c4a8;
     --color-sand-darker: #c2b299;
     
-    /* Forest green palette */
-    --color-forest-dark: #2d4a2d;
-    --color-forest-medium: #4a6b4a;
-    --color-forest-light: #5a7a5a;
-    --color-forest-lighter: #6b8a6b;
+    /* Forest green palette - Updated to #008000 */
+    --color-forest-dark: #006400;
+    --color-forest-medium: #008000;
+    --color-forest-light: #228B22;
+    --color-forest-lighter: #32CD32;
     
     /* Neutral colors */
     --color-white: #ffffff;
@@ -213,9 +213,9 @@ include 'includes/header.php';
     --color-border: #e8e0d4;
     
     /* Effects */
-    --shadow-sm: 0 2px 8px rgba(45, 74, 45, 0.08);
-    --shadow-md: 0 4px 16px rgba(45, 74, 45, 0.12);
-    --shadow-lg: 0 8px 32px rgba(45, 74, 45, 0.15);
+    --shadow-sm: 0 2px 8px rgba(0, 128, 0, 0.08);
+    --shadow-md: 0 4px 16px rgba(0, 128, 0, 0.12);
+    --shadow-lg: 0 8px 32px rgba(0, 128, 0, 0.15);
     --border-radius: 24px;
     --border-radius-lg: 40px;
 }
@@ -405,6 +405,14 @@ body {
     justify-content: center;
     margin: 0 auto 1rem;
     color: var(--color-forest-medium);
+    overflow: hidden;
+}
+
+.feature-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 20px;
 }
 
 .feature-card h6 {
@@ -446,11 +454,12 @@ body {
     margin-bottom: 3rem;
 }
 
-/* Categories Grid */
+/* Categories Grid - Fixed alignment */
 .categories-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
     gap: 2rem;
+    align-items: stretch;
 }
 
 .category-card {
@@ -462,6 +471,10 @@ body {
     transition: all 0.3s ease;
     position: relative;
     overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    box-sizing: border-box;
 }
 
 .category-card::before {
@@ -486,33 +499,43 @@ body {
 }
 
 .category-icon {
-    width: 80px;
-    height: 80px;
+    width: 120px;
+    height: 120px;
     background: linear-gradient(135deg, var(--color-sand-medium) 0%, var(--color-sand-dark) 100%);
     border-radius: 24px;
     margin: 0 auto 1.5rem;
     position: relative;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
 }
 
-/* Category-specific icons using CSS */
-.category-clean::before { content: '🧹'; font-size: 2rem; }
-.category-kitchen::before { content: '🍳'; font-size: 2rem; }
-.category-decor::before { content: '🏠'; font-size: 2rem; }
-.category-bathroom::before { content: '🚿'; font-size: 2rem; }
-.category-wellness::before { content: '🌿'; font-size: 2rem; }
-.category-family::before { content: '👨‍👩‍👧‍👦'; font-size: 2rem; }
-.category-garden::before { content: '🌳'; font-size: 2rem; }
+.category-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 24px;
+}
 
 .category-card h3 {
     color: var(--color-forest-dark);
     margin-bottom: 1rem;
     font-weight: 600;
+    flex-shrink: 0;
 }
 
 .category-card p {
     color: var(--color-text-light);
     margin-bottom: 1.5rem;
     line-height: 1.5;
+    flex-grow: 1;
+}
+
+.category-card .btn {
+    flex-shrink: 0;
+    margin-top: auto;
 }
 
 /* Stats Section */

@@ -1,30 +1,19 @@
 <?php
-    
 require_once __DIR__ . '/includes/config.php';
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/database.php';
-
 
 if (session_status() == PHP_SESSION_NONE) {
     session_start();
 }
 
-
 $current_page = basename($_SERVER['PHP_SELF']);
 if ($current_page === 'login.php') {
-    
     $bypass_auth = true;
 }
 
-    
-
-
-
-
 if ($current_page === 'login.php' && isLoggedIn()) {
-
     if (isset($_SESSION['login_time']) && (time() - $_SESSION['login_time']) < 86400) {
-
         $redirect = $_GET['redirect'] ?? 'index.php';
         header('Location: ' . $redirect);
         exit();
@@ -38,6 +27,60 @@ if ($current_page === 'login.php' && isLoggedIn()) {
 $error = '';
 $success = '';
 
+// Handle resend verification request
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['resend_verification'])) {
+    $email = trim($_POST['email']);
+    
+    if (empty($email)) {
+        $error = "Please enter your email address to resend verification code.";
+    } else {
+        $conn = getDatabaseConnection();
+        
+        if ($conn) {
+            // Check if user exists and is not verified
+            $sql = "SELECT user_id, first_name, is_verified FROM users WHERE email = ?";
+            $stmt = $conn->prepare($sql);
+            $stmt->bind_param("s", $email);
+            $stmt->execute();
+            $result = $stmt->get_result();
+            
+            if ($result->num_rows === 1) {
+                $user = $result->fetch_assoc();
+                
+                if (!$user['is_verified']) {
+                    // Generate new verification code
+                    $new_verification_code = sprintf("%06d", mt_rand(1, 999999));
+                    
+                    // Update verification code
+                    $update_sql = "UPDATE users SET verification_code = ? WHERE user_id = ?";
+                    $update_stmt = $conn->prepare($update_sql);
+                    $update_stmt->bind_param("si", $new_verification_code, $user['user_id']);
+                    
+                    if ($update_stmt->execute()) {
+                        // Resend verification email
+                        if (sendVerificationEmail($email, $user['first_name'], $new_verification_code)) {
+                            $success = "Verification code has been resent to your email!";
+                        } else {
+                            $error = "Failed to send verification email. Please try again.";
+                        }
+                    } else {
+                        $error = "Failed to generate new verification code. Please try again.";
+                    }
+                    $update_stmt->close();
+                } else {
+                    $error = "This email is already verified. Please login normally.";
+                }
+            } else {
+                $error = "No account found with this email address.";
+            }
+            $stmt->close();
+            $conn->close();
+        } else {
+            $error = "Database connection failed. Please try again later.";
+        }
+    }
+}
+
 // Handle login form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
     $email = trim($_POST['email']);
@@ -50,7 +93,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
         $conn = getDatabaseConnection();
         
         if ($conn) {
-            $sql = "SELECT user_id, email, password_hash, first_name, last_name, role, eco_points_balance 
+            $sql = "SELECT user_id, email, password_hash, first_name, last_name, role, eco_points_balance, is_verified, verification_code 
                     FROM users 
                     WHERE email = ? AND is_active = 1";
             $stmt = $conn->prepare($sql);
@@ -64,16 +107,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
                     $user = $result->fetch_assoc();
                     
                     if (password_verify($password, $user['password_hash'])) {
-                        // Login successful
-                        loginUser($user['user_id'], $user['email'], $user['role'], $user['first_name']);
-                        
-                        // Set success message
-                        $_SESSION['login_success'] = "Welcome back, " . htmlspecialchars($user['first_name']) . "!";
-                        
-                        // Redirect to intended page or home
-                        $redirect = $_GET['redirect'] ?? 'index.php';
-                        header('Location: ' . $redirect);
-                        exit();
+                        // Check if email is verified
+                        if (!$user['is_verified']) {
+                            $error = "Please verify your email address before logging in. 
+                                     <br><small>Didn't receive the code? 
+                                     <form method='POST' style='display: inline;'>
+                                         <input type='hidden' name='email' value='" . htmlspecialchars($email) . "'>
+                                         <button type='submit' name='resend_verification' value='1' class='btn btn-link p-0 text-warning' style='text-decoration: underline;'>Resend verification code</button>
+                                     </form>
+                                     </small>";
+                        } else {
+                            // Login successful
+                            loginUser($user['user_id'], $user['email'], $user['role'], $user['first_name']);
+                            
+                            // Set success message
+                            $_SESSION['login_success'] = "Welcome back, " . htmlspecialchars($user['first_name']) . "!";
+                            
+                            // Redirect to intended page or home
+                            $redirect = $_GET['redirect'] ?? 'index.php';
+                            header('Location: ' . $redirect);
+                            exit();
+                        }
                     } else {
                         $error = "Invalid email or password.";
                     }
@@ -95,7 +149,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['google_token'])) {
     $google_token = $_POST['google_token'];
     
-    // Verify Google token
+    // Verify Google token using function from auth.php
     $user_data = verifyGoogleToken($google_token);
     
     if ($user_data) {
@@ -107,7 +161,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['google_token'])) {
         $conn = getDatabaseConnection();
         if ($conn) {
             // Check if user exists by email
-            $sql = "SELECT user_id, email, first_name, last_name, role, eco_points_balance 
+            $sql = "SELECT user_id, email, first_name, last_name, role, eco_points_balance, is_verified 
                     FROM users 
                     WHERE email = ? AND is_active = 1";
             $stmt = $conn->prepare($sql);
@@ -116,21 +170,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['google_token'])) {
             $result = $stmt->get_result();
             
             if ($result->num_rows === 1) {
-                // Existing user - log them in
+                // Existing user - check verification and log them in
                 $user = $result->fetch_assoc();
+                
+                // For Google users, auto-verify if not already verified
+                if (!$user['is_verified']) {
+                    $update_sql = "UPDATE users SET is_verified = 1, verification_code = NULL WHERE user_id = ?";
+                    $update_stmt = $conn->prepare($update_sql);
+                    $update_stmt->bind_param("i", $user['user_id']);
+                    $update_stmt->execute();
+                    $update_stmt->close();
+                }
+                
                 loginUser($user['user_id'], $user['email'], $user['role'], $user['first_name']);
                 $_SESSION['login_success'] = "Welcome back, " . htmlspecialchars($user['first_name']) . "!";
             } else {
-                // New user - create account
-                $sql = "INSERT INTO users (email, first_name, last_name, google_id, role, is_active, created_at, auth_provider) 
-                        VALUES (?, ?, ?, ?, 'customer', 1, NOW(), 'google')";
+                // New user - create account (auto-verified for Google)
+                $sql = "INSERT INTO users (email, first_name, last_name, google_id, role, is_active, is_verified, created_at, auth_provider, eco_points_balance) 
+                        VALUES (?, ?, ?, ?, 'customer', 1, 1, NOW(), 'google', 100)";
                 $stmt = $conn->prepare($sql);
                 $stmt->bind_param("ssss", $email, $first_name, $last_name, $google_id);
                 
                 if ($stmt->execute()) {
                     $user_id = $conn->insert_id;
                     loginUser($user_id, $email, 'customer', $first_name);
-                    $_SESSION['login_success'] = "Welcome to DragonStone, " . htmlspecialchars($first_name) . "!";
+                    $_SESSION['login_success'] = "Welcome to DragonStone, " . htmlspecialchars($first_name) . "! You've earned 100 bonus EcoPoints!";
                 } else {
                     $error = "Failed to create account. Please try again.";
                 }
@@ -147,6 +211,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['google_token'])) {
     } else {
         $error = "Google Sign-In failed. Please try again.";
     }
+}
+
+function sendVerificationEmail($email, $name, $verification_code) {
+    $subject = "Verify Your DragonStone Account";
+    $message = "
+    <html>
+    <head>
+        <title>Email Verification</title>
+        <style>
+            body { font-family: Arial, sans-serif; background-color: #f4f4f4; padding: 20px; }
+            .container { background: white; padding: 30px; border-radius: 10px; max-width: 600px; margin: 0 auto; }
+            .code { background: #f8f9fa; padding: 20px; text-align: center; font-size: 24px; font-weight: bold; letter-spacing: 2px; margin: 20px 0; border-radius: 5px; }
+            .footer { margin-top: 20px; padding-top: 20px; border-top: 1px solid #ddd; color: #666; font-size: 12px; }
+        </style>
+    </head>
+    <body>
+        <div class='container'>
+            <h2 style='color: #198754;'>Welcome to DragonStone, $name!</h2>
+            <p>Thank you for creating an account. Please use the verification code below to verify your email address:</p>
+            <div class='code'>$verification_code</div>
+            <p>Enter this code on the verification page to complete your registration.</p>
+            <p>You can also verify your account by clicking the link below:</p>
+            <p><a href='http://localhost/dragonstone/verify_email.php?email=" . urlencode($email) . "' style='background: #198754; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;'>Verify Email Address</a></p>
+            <div class='footer'>
+                <p><small>If you didn't create an account, please ignore this email.</small></p>
+                <p><small>This is an automated message, please do not reply to this email.</small></p>
+            </div>
+        </div>
+    </body>
+    </html>
+    ";
+    
+    $headers = "MIME-Version: 1.0" . "\r\n";
+    $headers .= "Content-type:text/html;charset=UTF-8" . "\r\n";
+    $headers .= "From: DragonStone <no-reply@dragonstone.com>" . "\r\n";
+    $headers .= "Reply-To: no-reply@dragonstone.com" . "\r\n";
+    
+    return mail($email, $subject, $message, $headers);
 }
 
 $page_title = "Login - DragonStone";
@@ -172,6 +274,14 @@ require_once __DIR__ . '/includes/header.php';
                 <div class="alert alert-danger alert-dismissible fade show" role="alert">
                     <i class="fas fa-exclamation-triangle me-2"></i>
                     <?php echo $error; ?>
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            <?php endif; ?>
+            
+            <?php if ($success): ?>
+                <div class="alert alert-success alert-dismissible fade show" role="alert">
+                    <i class="fas fa-check-circle me-2"></i>
+                    <?php echo $success; ?>
                     <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                 </div>
             <?php endif; ?>
@@ -239,6 +349,11 @@ require_once __DIR__ . '/includes/header.php';
                         </small>
                         <br>
                         <small class="text-muted">
+                            Need to verify your account?
+                            <a href="verify_email.php" class="text-success fw-bold">Verify email here</a>
+                        </small>
+                        <br>
+                        <small class="text-muted">
                             <a href="index.php" class="text-muted">
                                 <i class="fas fa-arrow-left me-1"></i>Back to home
                             </a>
@@ -270,6 +385,9 @@ require_once __DIR__ . '/includes/header.php';
                         </div>
                     </div>
                 </div>
+                <small class="text-muted mt-2 d-block">
+                    Note: Demo accounts are pre-verified for testing
+                </small>
             </div>
         </div>
     </div>
@@ -331,7 +449,6 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('googleSignInForm').submit();
     };
     
- 
     window.onload = function() {
         if (typeof google !== 'undefined') {
             google.accounts.id.initialize({
@@ -392,42 +509,20 @@ document.addEventListener('DOMContentLoaded', function() {
     color: white;
 }
 
-
 #googleSignInBtn {
     width: 100%;
+}
+
+/* Style for inline resend verification button */
+.btn-link.text-warning:hover {
+    color: #ffc107 !important;
+    text-decoration: underline !important;
 }
 </style>
 
 <?php 
-function verifyGoogleToken($token) {
-    $client_id = '739507838563-plnrf3qgu6a6ss7ma53efvddmf29ete7.apps.googleusercontent.com';
-    
-    $url = 'https://www.googleapis.com/oauth2/v3/tokeninfo?id_token=' . $token;
-    
-    // Use cURL for better error handling
-    $ch = curl_init();
-    curl_setopt($ch, CURLOPT_URL, $url);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 10);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-    $response = curl_exec($ch);
-    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
-    
-    if ($http_code === 200) {
-        $data = json_decode($response, true);
-        
-        
-        if (isset($data['aud']) && $data['aud'] === $client_id && 
-            isset($data['email']) && isset($data['email_verified']) && 
-            $data['email_verified'] === 'true') {
-            return $data;
-        }
-    }
-    
-    error_log("Google token verification failed. HTTP Code: " . $http_code . " Response: " . $response);
-    return false;
-}
+// REMOVED THE DUPLICATE verifyGoogleToken() FUNCTION FROM HERE
+// It's now only in auth.php
 
 require_once __DIR__ . '/includes/footer.php'; 
 ?>

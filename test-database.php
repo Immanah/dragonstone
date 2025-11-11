@@ -1,29 +1,31 @@
 <?php
-include 'includes/database.php';
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
 
-// Test if we can read data
-echo "<h2>Testing Database Connection</h2>";
+echo "<h1>Basic PHP Test</h1>";
+echo "<p>PHP is working...</p>";
 
-// Test Categories
-$result = $conn->query("SELECT * FROM categories");
-echo "<h3>Categories (" . $result->num_rows . " found):</h3>";
-while($row = $result->fetch_assoc()) {
-    echo "- " . $row['name'] . "<br>";
+// Test database configuration
+if (file_exists('config.php')) {
+    require_once 'config.php';
+    echo "<p style='color: green;'>✅ config.php loaded</p>";
+    echo "<p>DB_HOST: " . DB_HOST . "</p>";
+    echo "<p>DB_USER: " . DB_USER . "</p>";
+    echo "<p>DB_NAME: " . DB_NAME . "</p>";
+} else {
+    echo "<p style='color: red;'>❌ config.php not found</p>";
 }
 
-// Test Products  
-$result = $conn->query("SELECT * FROM products");
-echo "<h3>Products (" . $result->num_rows . " found):</h3>";
-while($row = $result->fetch_assoc()) {
-    echo "- " . $row['name'] . " (R" . $row['price'] . ")<br>";
+// Test basic database connection
+try {
+    $conn = new mysqli(DB_HOST, DB_USER, DB_PASS);
+    if ($conn->connect_error) {
+        echo "<p style='color: red;'>❌ Database connection failed: " . $conn->connect_error . "</p>";
+    } else {
+        echo "<p style='color: green;'>✅ Database server connected</p>";
+        $conn->close();
+    }
+} catch (Exception $e) {
+    echo "<p style='color: red;'>❌ Connection error: " . $e->getMessage() . "</p>";
 }
-
-// Test Users
-$result = $conn->query("SELECT * FROM users");
-echo "<h3>Users (" . $result->num_rows . " found):</h3>";
-while($row = $result->fetch_assoc()) {
-    echo "- " . $row['email'] . " (" . $row['role'] . ")<br>";
-}
-
-$conn->close();
 ?>

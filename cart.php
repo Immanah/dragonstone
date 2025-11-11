@@ -268,16 +268,20 @@ body {
     }
 }
 
-.eco-product-icon {
-    font-size: 2.5rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+.eco-product-image {
     width: 80px;
     height: 80px;
-    background: rgba(74, 107, 74, 0.1);
-    border-radius: 50%;
+    border-radius: 15px;
+    object-fit: cover;
     margin-right: 20px;
+    border: 2px solid rgba(74, 107, 74, 0.1);
+    box-shadow: 0 4px 12px rgba(45, 74, 45, 0.1);
+    transition: all 0.3s ease;
+}
+
+.eco-product-image:hover {
+    transform: scale(1.05);
+    box-shadow: 0 6px 20px rgba(45, 74, 45, 0.15);
 }
 
 .eco-impact-stats {
@@ -464,7 +468,7 @@ body {
         padding: 20px;
     }
     
-    .eco-product-icon {
+    .eco-product-image {
         margin-bottom: 15px;
         margin-right: 0;
     }
@@ -539,8 +543,14 @@ body {
                     <div class="eco-card-body p-0">
                         <?php foreach($cart_items as $item): 
                             $product = $item['product'];
-                            $icons = ['🧼', '🍴', '🏠', '🚿', '🌿', '👶', '🌳'];
-                            $icon = $icons[$product['category_id']-1] ?? '📦';
+                            
+                            // Get product image - use image_path first, then image_url, then fallback
+                            $product_image = 'includes/Screenshot 2025-10-30 145731.png'; // Fallback image
+                            if (!empty($product['image_path'])) {
+                                $product_image = $product['image_path'];
+                            } elseif (!empty($product['image_url'])) {
+                                $product_image = $product['image_url'];
+                            }
                             
                             // Safely check for product attributes with fallbacks
                             $is_vegan = isset($product['is_vegan']) ? $product['is_vegan'] : false;
@@ -548,9 +558,12 @@ body {
                             $co2_saved = isset($product['co2_saved']) ? $product['co2_saved'] : 0;
                         ?>
                             <div class="cart-item">
-                                <div class="eco-product-icon">
-                                    <?php echo $icon; ?>
-                                </div>
+                                <!-- Product Image -->
+                                <img src="<?php echo htmlspecialchars($product_image); ?>" 
+                                     alt="<?php echo htmlspecialchars($product['name']); ?>"
+                                     class="eco-product-image"
+                                     onerror="this.src='includes/Screenshot 2025-10-30 145731.png'">
+                                
                                 <div class="cart-item-details">
                                     <div class="cart-item-name"><?php echo htmlspecialchars($product['name']); ?></div>
                                     <div class="cart-item-desc"><?php echo htmlspecialchars($product['description']); ?></div>
